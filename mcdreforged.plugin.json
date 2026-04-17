@@ -8,5 +8,8 @@
     },
     "author": "Azusa-mikan",
     "link": "https://github.com/Azusa-mikan/telegram_bridge",
-    "resources": ["lang"]
+    "resources": ["lang"],
+    "dependencies": {
+        "mcdreforged": ">=2.15"
+    }
 }
