@@ -1,0 +1,12 @@
+{
+    "id": "tgb",
+    "version": "1.0.0",
+    "name": "Telegram Bridge",
+    "description": {
+        "zh_cn": "使用 Telegram Bot 控制你的 Minecraft 服务器，具备聊天同步/事件转发",
+        "en_us": "Control your Minecraft server via Telegram Bot, with chat sync and event forwarding"
+    },
+    "author": "Azusa-mikan",
+    "link": "https://github.com/Azusa-mikan/telegram_bridge",
+    "resources": ["lang"]
+}

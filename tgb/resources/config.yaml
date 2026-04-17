@@ -1,0 +1,13 @@
+# 设为 true 以激活插件
+plugin_status: false
+
+# 消息转发格式
+to_tg_message_format: "<{player}> {text}"
+to_mc_message_format: "<{player}> {text}"
+
+# Telegram 设置
+telegram:
+  bot_token: ""
+  admin_id: 12345678
+  chat_ids:
+  - -100123456789

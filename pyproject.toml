@@ -1,0 +1,11 @@
+[project]
+name = "telegram-bridge"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcdreforged>=2.15.7",
+    "pydantic>=2.12.5",
+    "python-telegram-bot[rate-limiter]>=22.7",
+]
