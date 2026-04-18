@@ -5,15 +5,16 @@ from queue import Queue
 class StopSignal:
     pass
 
-@dataclass
+@dataclass(slots=True)
 class MCTOTGMessages:
     player: str
     text: str
     reply_chat_id: int | None = None
     reply_to_message_id: int | None = None
 
-@dataclass
+@dataclass(slots=True)
 class TGTOMCMessages:
+    player_name: str | None
     userid: int
     username: str | None
     fullname: str
@@ -24,6 +25,7 @@ tg_messages_queue: Queue[StopSignal | MCTOTGMessages] = Queue()
 mc_messages_queue: Queue[StopSignal | TGTOMCMessages] = Queue()
 
 def send_message_to_telegram(
+        *,
         player: str,
         text: str
     ) -> None:
@@ -35,6 +37,8 @@ def send_message_to_telegram(
     )
 
 def send_message_to_minecraft(
+        *,
+        player_name: str | None,
         userid: int,
         username: str | None,
         fullname: str,
@@ -43,6 +47,7 @@ def send_message_to_minecraft(
     ) -> None:
     mc_messages_queue.put_nowait(
         TGTOMCMessages(
+            player_name,
             userid,
             username,
             fullname,

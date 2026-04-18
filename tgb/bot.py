@@ -1,7 +1,10 @@
 from typing import Any, Literal
+from pathlib import Path
 import asyncio
+import json
+import os
 
-from mcdreforged import ServerInterface
+from mcdreforged import PluginServerInterface
 from telegram import User, Update
 from telegram.ext import Application, CallbackContext, ExtBot, JobQueue
 from telegram.ext import CommandHandler, MessageHandler, AIORateLimiter, filters
@@ -21,13 +24,13 @@ Status = Literal["nostarted", "starting", "running", "stopping", "stopped"]
 class TGBot_init:
     def __init__(
         self,
-        serverinterface: ServerInterface,
+        serverinterface: PluginServerInterface,
         token: str,
         admin_id: int,
         chat_ids: list[int],
         message_format: str,
     ) -> None:
-        self.mcserver: ServerInterface = serverinterface
+        self.mcserver: PluginServerInterface = serverinterface
         self.telegram_token: str = token
         self.admin_id: int = admin_id
         self.chat_ids_list: list[int] = chat_ids
@@ -35,10 +38,21 @@ class TGBot_init:
         self.message_format: str = message_format
         self.status: Status = "nostarted"
         self.bot: App = self._init_bot()
+
+        self.bind_players: dict[str, str] = {}
+        self.bind_path = Path(
+            serverinterface.get_data_folder(),
+            "bind.json"
+        )
+        self.bind_cache_path = Path(
+            serverinterface.get_data_folder(),
+            "bind.json.cache"
+        )
     
-    async def set_command(self, app: App):
+    async def set_command(self, app: App) -> None:
         await app.bot.set_my_commands([
             ("start", "激活机器人"),
+            ("bind", "绑定到玩家"),
             ("status", "查看服务器状态"),
             ("stop", "停止服务器"),
             ("restart", "重启服务器"),
@@ -68,11 +82,17 @@ class TGBot_init:
                 self.send_messages(),
                 name="send_messages_task"
             )
+            if self.bind_path.exists():
+                self.bind_players = json.loads(
+                    self.bind_path.read_text(
+                        encoding="utf-8"
+                    )
+                )
         except Exception as e:
             self.mcserver.logger.exception(
                 self.mcserver.tr("tgb.start_failed")
             )
-            raise RuntimeError("Startup failed, please check network connection") from e
+            raise RuntimeError("Bot Startup failed") from e
     
     async def shutdown(self, app: App) -> None:
         tg_messages_queue.put_nowait(StopSignal())
@@ -90,7 +110,7 @@ class TGBot_init:
     async def on_error(self, app: object, context: Context) -> None:
         self.mcserver.logger.error(f"ERROR: {context.error}")
 
-    async def send_messages(self):
+    async def send_messages(self) -> None:
         self.mcserver.logger.info(
             self.mcserver.tr("tgb.tg_queue_start")
         )
@@ -116,6 +136,7 @@ class TGBot_init:
                         reply_to_message_id=msg.reply_to_message_id,
                     )
                     continue
+
                 tasks = [
                     self.bot.bot.send_message(
                         chat_id=chat_id,
@@ -126,7 +147,10 @@ class TGBot_init:
                     )
                     for chat_id in self.chat_ids_list
                 ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                results = await asyncio.gather(
+                    *tasks,
+                    return_exceptions=True
+                )
                 for chat_id, result in zip(self.chat_ids_list, results):
                     if isinstance(result, BaseException):
                         self.mcserver.logger.error(
@@ -147,6 +171,14 @@ class TGBot_init:
             self.mcserver.tr("tgb.tg_queue_stop")
         )
 
+    
+    def is_allowed_chat(self, update: Update) -> bool:
+        if not update.effective_chat:
+            return False
+        if update.effective_chat.id not in self.chat_ids_set:
+            return False
+        return True
+
     def _init_bot(self) -> App:
         app = Application.builder()
         app.token(self.telegram_token)
@@ -158,7 +190,7 @@ class TGBot_init:
 class TGBot_command(TGBot_init):
     def __init__(
             self,
-            serverinterface: ServerInterface,
+            serverinterface: PluginServerInterface,
             token: str,
             admin_id: int,
             chat_ids: list[int],
@@ -171,6 +203,7 @@ class TGBot_command(TGBot_init):
             chat_ids=chat_ids,
             message_format=message_format
         )
+        self.files_lock = asyncio.Lock()
     
     async def start_handler(self, update: Update, context: Context) -> None:
         if not update.message:
@@ -178,12 +211,52 @@ class TGBot_command(TGBot_init):
         await update.message.reply_text("你好，我正在休眠\nZzz……")
     
     async def status_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
         if not update.message:
             return
         ServerRunning: bool = self.mcserver.is_server_running()
         ServerRconRunning: bool = self.mcserver.is_rcon_running()
         ServerProgramPID: int | None = self.mcserver.get_server_pid()
     
+    async def bind_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        if not (user := update.effective_user):
+            return
+        if not (args := context.args):
+            await update.message.reply_text(
+                "Usage: /bind [Player Name]"
+            )
+            return
+        if len(args) > 1:
+            await update.message.reply_text(
+                "Player name has no spaces"
+            )
+            return
+        
+        userid = str(user.id)
+        player_name: str = args[0]
+
+        async with self.files_lock:
+            self.bind_players[userid] = player_name
+            with self.bind_cache_path.open("w", encoding="utf-8") as f:
+                json.dump(
+                    self.bind_players,
+                    f,
+                    indent=2
+                )
+                f.flush()
+                os.fsync(f.fileno())
+
+            os.replace(self.bind_cache_path, self.bind_path)
+        
+        await update.message.reply_text(
+            f"已绑定为 {player_name}"
+        )
+
     async def messages_handler(self, update: Update, context: Context) -> None:
         if (chat := update.effective_chat) is None:
             return
@@ -195,7 +268,9 @@ class TGBot_command(TGBot_init):
             return
         if (user := update.effective_user) is None:
             return
+        player_name = self.bind_players.get(str(user.id))
         send_message_to_minecraft(
+            player_name=player_name,
             userid=user.id,
             username=user.username,
             fullname=user.full_name,
@@ -207,7 +282,7 @@ class TGBot(TGBot_command):
     def __init__(
             self,
             *,
-            serverinterface: ServerInterface,
+            serverinterface: PluginServerInterface,
             token: str,
             admin_id: int,
             chat_ids: list[int],
@@ -222,8 +297,9 @@ class TGBot(TGBot_command):
         )
         self.loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
-    def register_handlers(self):
+    def register_handlers(self) -> None:
         self.bot.add_error_handler(self.on_error)
+        self.bot.add_handler(CommandHandler("bind", self.bind_handler))
         self.bot.add_handler(
             MessageHandler(
                 filters=~filters.COMMAND,
@@ -248,7 +324,7 @@ class TGBot(TGBot_command):
                 self.loop.close()
             self.status = "stopped"
 
-    def stop(self):
+    def stop(self) -> None:
         self.status = "stopping"
         if self.loop.is_running():
             self.loop.call_soon_threadsafe(self.bot.stop_running)

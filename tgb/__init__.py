@@ -42,12 +42,16 @@ def message_send_text(server: PluginServerInterface) -> None:
             server.say(
                 RText(
                     config.to_mc_message_format.format(
-                        player=msg.fullname,
+                        player=(
+                            msg.player_name
+                            if msg.player_name is not None
+                            else msg.fullname
+                        ),
                         text=msg.text
                     )
                 ).h(
                     f"UserID: {msg.userid}\n"
-                    f"UserName: {msg.username}\n"
+                    f"UserName: @{msg.username}\n"
                     f"FullName: {msg.fullname}\n"
                     f"FromChat: {msg.fromchat}"
                 )
