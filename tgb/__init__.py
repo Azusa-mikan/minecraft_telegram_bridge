@@ -1,10 +1,11 @@
 import threading
 
-from mcdreforged import PluginServerInterface, Info, RText
+from mcdreforged import PluginServerInterface, Info, RText, RAction
 
 from tgb.config import load_config
 from tgb.bot import TGBot
 from tgb.util.dispatcher import StopSignal, mc_messages_queue, send_message_to_telegram
+from tgb.command import register_commands
 
 
 bot: TGBot | None = None
@@ -27,7 +28,7 @@ def has_old_thread_alive() -> bool:
 
 def message_send_text(server: PluginServerInterface) -> None:
     config = load_config(server)
-    server.logger.info(server.tr("tgb.mc_queue_start"))
+    server.logger.info(server.rtr("tgb.mc_queue_start"))
     while True:
         try:
             msg = mc_messages_queue.get()
@@ -35,7 +36,7 @@ def message_send_text(server: PluginServerInterface) -> None:
                 mc_messages_queue.task_done()
                 break
         except Exception:
-            server.logger.exception(server.tr("tgb.mc_queue_error"))
+            server.logger.exception(server.rtr("tgb.mc_queue_error"))
             continue
 
         try:
@@ -54,14 +55,17 @@ def message_send_text(server: PluginServerInterface) -> None:
                     f"UserName: @{msg.username}\n"
                     f"FullName: {msg.fullname}\n"
                     f"FromChat: {msg.fromchat}"
+                ).c(
+                    RAction.suggest_command,
+                    f"!!tgb reply {msg.fromchat} {msg.frommessageid} "
                 )
             )
         except Exception:
-            server.logger.exception(server.tr("tgb.mc_queue_error"))
+            server.logger.exception(server.rtr("tgb.mc_queue_error"))
             continue
         finally:
             mc_messages_queue.task_done()
-    server.logger.info(server.tr("tgb.mc_queue_stop"))
+    server.logger.info(server.rtr("tgb.mc_queue_stop"))
 
 def on_server_startup(server: PluginServerInterface) -> None:
     global mc_queue_thread
@@ -75,16 +79,17 @@ def on_server_startup(server: PluginServerInterface) -> None:
         )
         mc_queue_thread.start()
     else:
-        server.logger.warning(server.tr("tgb.bot_not_running"))
+        server.logger.warning(server.rtr("tgb.bot_not_running"))
 
 def on_load(server: PluginServerInterface, prev) -> None:
     config = load_config(server)
+    register_commands(server)
     if not config.plugin_status:
-        server.logger.error(server.tr("tgb.not_available"))
+        server.logger.error(server.rtr("tgb.not_available"))
         return
 
     if has_old_thread_alive():
-        server.logger.error(server.tr("tgb.threading_running"))
+        server.logger.error(server.rtr("tgb.threading_running"))
         return
 
     global bot, bot_thread
@@ -113,7 +118,7 @@ def on_unload(server: PluginServerInterface) -> None:
         bot_thread.join(timeout=60)
         if bot_thread.is_alive():
             server.logger.warning(
-                server.tr(
+                server.rtr(
                     "tgb.still_running",
                     threadname=bot_thread_name
                 )
@@ -127,17 +132,19 @@ def on_unload(server: PluginServerInterface) -> None:
         mc_queue_thread.join(timeout=30)
         if mc_queue_thread.is_alive():
             server.logger.warning(
-                server.tr(
+                server.rtr(
                     "tgb.still_running",
                     threadname=mc_queue_thread_name
                 )
             )
 
     mc_queue_thread = None
-    server.logger.info(server.tr("tgb.unload"))
+    server.logger.info(server.rtr("tgb.unload"))
 
 def on_user_info(server: PluginServerInterface, info: Info) -> None:
     if info.player is None or info.content is None:
+        return
+    if info.content.startswith("!!"):
         return
     if bot_thread is not None and bot_thread.is_alive():
         send_message_to_telegram(
@@ -145,4 +152,4 @@ def on_user_info(server: PluginServerInterface, info: Info) -> None:
             text=info.content
         )
     else:
-        server.logger.warning(server.tr("tgb.bot_not_running"))
+        server.logger.warning(server.rtr("tgb.bot_not_running"))

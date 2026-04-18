@@ -9,6 +9,7 @@ from telegram import User, Update
 from telegram.ext import Application, CallbackContext, ExtBot, JobQueue
 from telegram.ext import CommandHandler, MessageHandler, AIORateLimiter, filters
 from telegram.constants import BOT_API_VERSION
+from telegram.error import TelegramError
 
 from tgb.util import BoolStr
 from tgb.util.dispatcher import StopSignal, tg_messages_queue, send_message_to_minecraft
@@ -64,14 +65,14 @@ class TGBot_init:
         try:
             me: User = await app.bot.get_me()
             self.mcserver.logger.info(
-                self.mcserver.tr(
+                self.mcserver.rtr(
                     "tgb.started",
                     name=me.full_name,
                     id=me.id
                 )
             )
             self.mcserver.logger.info(
-                self.mcserver.tr(
+                self.mcserver.rtr(
                     "tgb.version",
                     version=BOT_API_VERSION
                 )
@@ -90,7 +91,7 @@ class TGBot_init:
                 )
         except Exception as e:
             self.mcserver.logger.exception(
-                self.mcserver.tr("tgb.start_failed")
+                self.mcserver.rtr("tgb.start_failed")
             )
             raise RuntimeError("Bot Startup failed") from e
     
@@ -102,7 +103,7 @@ class TGBot_init:
             self.mcserver.logger.debug(f"{e}")
             pass
         self.mcserver.logger.info(
-            self.mcserver.tr(
+            self.mcserver.rtr(
                 "tgb.shutdown"
             )
         )
@@ -112,7 +113,7 @@ class TGBot_init:
 
     async def send_messages(self) -> None:
         self.mcserver.logger.info(
-            self.mcserver.tr("tgb.tg_queue_start")
+            self.mcserver.rtr("tgb.tg_queue_start")
         )
         while True:
             try:
@@ -124,16 +125,19 @@ class TGBot_init:
                     break
             except Exception:
                 self.mcserver.logger.exception(
-                    self.mcserver.tr("tgb.tg_queue_error")
+                    self.mcserver.rtr("tgb.tg_queue_error")
                 )
                 continue
 
             try:
-                if msg.reply_chat_id is not None and msg.reply_to_message_id is not None:
+                if msg.from_chat_id is not None and msg.from_message_id is not None:
                     await self.bot.bot.send_message(
-                        chat_id=msg.reply_chat_id,
-                        text=msg.text,
-                        reply_to_message_id=msg.reply_to_message_id,
+                        chat_id=msg.from_chat_id,
+                        reply_to_message_id=msg.from_message_id,
+                        text=self.message_format.format(
+                            player=msg.player,
+                            text=msg.text
+                        ),
                     )
                     continue
 
@@ -154,21 +158,34 @@ class TGBot_init:
                 for chat_id, result in zip(self.chat_ids_list, results):
                     if isinstance(result, BaseException):
                         self.mcserver.logger.error(
-                            self.mcserver.tr(
+                            self.mcserver.rtr(
                                 "tgb.tg_queue_send_error",
                                 chat_id=chat_id,
                                 error=f"{result!r}"
                             )
                         )
-            except Exception:
+            except TelegramError as e:
+                if (
+                    msg.error_message is not None
+                    and not msg.error_message.done()
+                    ):
+                    msg.error_message.set_result(
+                        str(e)
+                    )
+                self.mcserver.logger.error(
+                    f"{self.mcserver.rtr("tgb.tg_queue_error")}: "
+                    f"{e}"
+                )
+                continue
+            except Exception as e:
                 self.mcserver.logger.exception(
-                    self.mcserver.tr("tgb.tg_queue_error")
+                    self.mcserver.rtr("tgb.tg_queue_error")
                 )
                 continue
             finally:
                 tg_messages_queue.task_done()
         self.mcserver.logger.info(
-            self.mcserver.tr("tgb.tg_queue_stop")
+            self.mcserver.rtr("tgb.tg_queue_stop")
         )
 
     
@@ -275,6 +292,7 @@ class TGBot_command(TGBot_init):
             username=user.username,
             fullname=user.full_name,
             fromchat=chat.id,
+            frommessageid=message.id,
             text=message.text,
         )
 

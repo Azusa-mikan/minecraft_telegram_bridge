@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from queue import Queue
+from concurrent.futures import Future
 
 @dataclass(frozen=True)
 class StopSignal:
@@ -9,8 +10,9 @@ class StopSignal:
 class MCTOTGMessages:
     player: str
     text: str
-    reply_chat_id: int | None = None
-    reply_to_message_id: int | None = None
+    from_chat_id: int | None = None
+    from_message_id: int | None = None
+    error_message: Future[str] | None = None
 
 @dataclass(slots=True)
 class TGTOMCMessages:
@@ -19,6 +21,7 @@ class TGTOMCMessages:
     username: str | None
     fullname: str
     fromchat: int
+    frommessageid: int
     text: str
 
 tg_messages_queue: Queue[StopSignal | MCTOTGMessages] = Queue()
@@ -27,12 +30,16 @@ mc_messages_queue: Queue[StopSignal | TGTOMCMessages] = Queue()
 def send_message_to_telegram(
         *,
         player: str,
-        text: str
+        text: str,
+        from_chat_id: int | None = None,
+        from_message_id: int | None = None,
     ) -> None:
     tg_messages_queue.put_nowait(
         MCTOTGMessages(
             player,
-            text
+            text,
+            from_chat_id,
+            from_message_id,
         )
     )
 
@@ -43,6 +50,7 @@ def send_message_to_minecraft(
         username: str | None,
         fullname: str,
         fromchat: int,
+        frommessageid: int,
         text: str,
     ) -> None:
     mc_messages_queue.put_nowait(
@@ -52,6 +60,7 @@ def send_message_to_minecraft(
             username,
             fullname,
             fromchat,
+            frommessageid,
             text
         )
     )

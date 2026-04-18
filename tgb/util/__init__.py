@@ -63,8 +63,8 @@ class TelegramCommandSource(CommandSource):
             MCTOTGMessages(
                 player="Console",
                 text=text,
-                reply_chat_id=self.message_context.chat.id,
-                reply_to_message_id=self.message_context.message_id
+                from_chat_id=self.message_context.chat.id,
+                from_message_id=self.message_context.message_id,
             )
         )
         
