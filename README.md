@@ -17,6 +17,7 @@
 
 - Python `>= 3.10`
 - MCDReforged `>= 2.15`
+- [mg_events](https://github.com/Mooling0602/MoreGameEvents-MCDR) `>=1.1.2`
 
 ## 安装
 
@@ -40,6 +41,7 @@ pip install "pydantic>=2.12.5" "python-telegram-bot[rate-limiter]>=22.7"
 - `to_mc_message_format`：Telegram -> Minecraft 聊天格式
 - `joined_message` / `left_message`：玩家进出服通知模板
 - `server_started_message` / `server_stopped_message`：服务器启停通知模板
+- `mc_to_tg_send_events`: 启用额外事件消息转发（玩家死亡、获得进度）
 - `telegram.bot_token`：BotFather 创建的机器人 Token
 - `telegram.admin_id`：管理员 Telegram 用户 ID（高权限操作判定）
 - `telegram.chat_ids`：允许交互的 Telegram 聊天 ID 列表（只能群组）
@@ -86,8 +88,9 @@ pip install "pydantic>=2.12.5" "python-telegram-bot[rate-limiter]>=22.7"
 ## 消息流向
 
 - Minecraft -> Telegram：
-  - 玩家聊天（非 `!!` 前缀）
+  - 玩家聊天（非 `!!` 命令）
   - 玩家加入 / 离开
+  - 玩家死亡 / 达成进度（若 `mc_to_tg_send_events` 为 `true`）
   - 服务器启动 / 停止
 - Telegram -> Minecraft：
   - 群消息转发到游戏聊天
@@ -101,6 +104,12 @@ pip install "pydantic>=2.12.5" "python-telegram-bot[rate-limiter]>=22.7"
 - Telegram 收不到消息：
   - 确认机器人已在目标群并关闭私有模式
   - 确认群 ID 已写入 `chat_ids`
+- 未转发死亡消息和进度消息
+    - 如果你所运行的服务端不会在控制台输出，那么 `MoreGameEvents-MCDR` 插件将无法捕获
+    - 详见: [工作原理](https://github.com/Mooling0602/MoreGameEvents-MCDR#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)
+- 死亡消息和进度消息有颜色符号
+    - 只要把 `/config/mg_events/config.yml` 中的 `set_advancement_color_in_content_raw` 配置项改为 `false` 即可
+    - 详见: [MoreGameEvents-MCDR 文档](https://github.com/Mooling0602/MoreGameEvents-MCDR#%E6%96%87%E6%A1%A3%E7%AE%80%E6%98%93%E7%89%88)
 - 绑定失败：
   - 确认验证码未过期
   - 确认执行绑定命令的游戏玩家与发起绑定的 Telegram 用户一致

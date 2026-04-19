@@ -1,6 +1,6 @@
 {
     "id": "tgb",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Telegram Bridge",
     "description": {
         "zh_cn": "使用 Telegram Bot 控制你的 Minecraft 服务器，具备聊天同步/事件转发",
@@ -10,6 +10,7 @@
     "link": "https://github.com/Azusa-mikan/telegram_bridge",
     "resources": ["lang"],
     "dependencies": {
-        "mcdreforged": ">=2.15"
+        "mcdreforged": ">=2.15",
+        "mg_events": ">=1.1.2"
     }
 }

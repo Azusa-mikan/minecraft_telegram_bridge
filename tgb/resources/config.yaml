@@ -11,6 +11,8 @@ left_message: "{player} 退出了游戏"
 server_started_message: "服务器已启动"
 server_stopped_message: "服务器已停止: {code}"
 
+mc_to_tg_send_events: true
+
 # Telegram 设置
 telegram:
   bot_token: ""

@@ -30,6 +30,7 @@ class Config(BaseModel):
     left_message: str
     server_started_message: str
     server_stopped_message: str
+    mc_to_tg_send_events: bool
     telegram: TelegramConfig
 
 

@@ -137,6 +137,10 @@ def on_load(server: PluginServerInterface, prev) -> None:
     )
     bot_thread.start()
 
+    if config.mc_to_tg_send_events:
+        server.register_event_listener("PlayerDeathEvent", on_player_death)
+        server.register_event_listener("PlayerAdvancementEvent", on_player_advancement)
+
     if prev is not None:
         start_mc_queue_worker(server)
 
@@ -150,23 +154,6 @@ def on_server_startup(server: PluginServerInterface) -> None:
         player=None,
         text=config.server_started_message
     )
-
-def on_user_info(server: PluginServerInterface, info: Info) -> None:
-    """
-    玩家消息
-    """
-    if info.player is None or info.content is None:
-        return
-    if info.content.startswith("!!"):
-        return
-    if bot_thread is not None and bot_thread.is_alive():
-        send_message_to_telegram(
-            player=info.player,
-            text=info.content
-        )
-    else:
-        stop_mc_queue_thread()
-        server.logger.warning(server.rtr("tgb.bot_not_running"))
 
 def on_player_joined(
         server: PluginServerInterface,
@@ -187,6 +174,53 @@ def on_player_joined(
     else:
         stop_mc_queue_thread()
         server.logger.warning(server.rtr("tgb.bot_not_running"))
+
+def on_user_info(server: PluginServerInterface, info: Info) -> None:
+    """
+    玩家消息
+    """
+    if info.player is None or info.content is None:
+        return
+    if info.content.startswith("!!"):
+        return
+    if bot_thread is not None and bot_thread.is_alive():
+        send_message_to_telegram(
+            player=info.player,
+            text=info.content
+        )
+    else:
+        stop_mc_queue_thread()
+        server.logger.warning(server.rtr("tgb.bot_not_running"))
+
+def on_player_death(
+        server: PluginServerInterface,
+        player: str,
+        event: str,
+        content
+    ) -> None:
+    """
+    玩家死亡
+    """
+    for i in content:
+        send_message_to_telegram(
+            player=None,
+            text=i.raw
+        )
+
+def on_player_advancement(
+        server: PluginServerInterface,
+        player: str,
+        event: str,
+        content
+    ) -> None:
+    """
+    玩家获得成就
+    """
+    for i in content:
+        send_message_to_telegram(
+            player=None,
+            text=i.raw
+        )
 
 def on_player_left(
         server: PluginServerInterface,
