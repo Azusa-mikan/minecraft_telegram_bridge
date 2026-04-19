@@ -1,4 +1,3 @@
-from typing import Literal
 from pathlib import Path
 import pkgutil
 
@@ -27,6 +26,10 @@ class Config(BaseModel):
     plugin_status: bool
     to_tg_message_format: str
     to_mc_message_format: str
+    joined_message: str
+    left_message: str
+    server_started_message: str
+    server_stopped_message: str
     telegram: TelegramConfig
 
 

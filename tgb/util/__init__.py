@@ -61,7 +61,7 @@ class TelegramCommandSource(CommandSource):
 
         tg_messages_queue.put_nowait(
             MCTOTGMessages(
-                player="Console",
+                player=None,
                 text=text,
                 from_chat_id=self.message_context.chat.id,
                 from_message_id=self.message_context.message_id,

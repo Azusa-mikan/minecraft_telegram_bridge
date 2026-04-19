@@ -1,18 +1,31 @@
 from typing import Any, Literal
+from functools import partial
 from pathlib import Path
 import asyncio
 import json
 import os
+from concurrent.futures import Future
+import time
+import secrets
+import queue
 
 from mcdreforged import PluginServerInterface
-from telegram import User, Update
+from telegram import User, Update, Message
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackContext, ExtBot, JobQueue
 from telegram.ext import CommandHandler, MessageHandler, AIORateLimiter, filters
-from telegram.constants import BOT_API_VERSION
+from telegram.constants import BOT_API_VERSION, ParseMode
 from telegram.error import TelegramError
 
 from tgb.util import BoolStr
-from tgb.util.dispatcher import StopSignal, tg_messages_queue, send_message_to_minecraft
+from tgb.util.dispatcher import (
+    StopSignal,
+    BindVerified,
+    BindVerify,
+    tg_messages_queue,
+    bind_verify_queue,
+    send_message_to_minecraft
+)
 
 BotData = dict[Any, Any]
 ChatData = dict[Any, Any]
@@ -49,6 +62,9 @@ class TGBot_init:
             serverinterface.get_data_folder(),
             "bind.json.cache"
         )
+        
+        self.files_lock = asyncio.Lock()
+        self.loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
     
     async def set_command(self, app: App) -> None:
         await app.bot.set_my_commands([
@@ -64,6 +80,7 @@ class TGBot_init:
     async def startup(self, app: App) -> None:
         try:
             me: User = await app.bot.get_me()
+            self.username = me.username
             self.mcserver.logger.info(
                 self.mcserver.rtr(
                     "tgb.started",
@@ -144,10 +161,10 @@ class TGBot_init:
                 tasks = [
                     self.bot.bot.send_message(
                         chat_id=chat_id,
-                        text=self.message_format.format(
+                        text=(self.message_format.format(
                             player=msg.player,
                             text=msg.text
-                        )
+                        ) if msg.player is not None else msg.text)
                     )
                     for chat_id in self.chat_ids_list
                 ]
@@ -172,7 +189,7 @@ class TGBot_init:
                     msg.error_message.set_result(
                         str(e)
                     )
-                self.mcserver.logger.error(
+                self.mcserver.logger.warning(
                     f"{self.mcserver.rtr("tgb.tg_queue_error")}: "
                     f"{e}"
                 )
@@ -188,13 +205,52 @@ class TGBot_init:
             self.mcserver.rtr("tgb.tg_queue_stop")
         )
 
-    
     def is_allowed_chat(self, update: Update) -> bool:
         if not update.effective_chat:
             return False
         if update.effective_chat.id not in self.chat_ids_set:
             return False
         return True
+
+    async def _bind_callback_async(
+            self,
+            bot: ExtBot[None],
+            fut: Future[BindVerified]
+        ) -> None:
+        result: BindVerified = fut.result()
+        if result.verified:
+            async with self.files_lock:
+                self.bind_players[result.user_id] = result.player_name
+                with self.bind_cache_path.open("w", encoding="utf-8") as f:
+                    json.dump(
+                        self.bind_players,
+                        f,
+                        indent=2
+                    )
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                os.replace(self.bind_cache_path, self.bind_path)
+            
+            await bot.send_message(
+                chat_id=result.user_id,
+                text=f"已绑定为 {result.player_name}"
+            )
+        else:
+            await bot.send_message(
+                chat_id=result.user_id,
+                text=f"绑定失败: 超时"
+            )
+
+    def bind_callback(
+            self,
+            bot: ExtBot[None],
+            fut: Future[BindVerified]
+        ) -> None:
+        asyncio.run_coroutine_threadsafe(
+            self._bind_callback_async(bot, fut),
+            self.loop
+        )
 
     def _init_bot(self) -> App:
         app = Application.builder()
@@ -220,21 +276,76 @@ class TGBot_command(TGBot_init):
             chat_ids=chat_ids,
             message_format=message_format
         )
-        self.files_lock = asyncio.Lock()
     
     async def start_handler(self, update: Update, context: Context) -> None:
         if not update.message:
             return
-        await update.message.reply_text("你好，我正在休眠\nZzz……")
+        if not (user := update.effective_user):
+            return
+        if not (args := context.args):
+            await update.message.reply_text("你好，我正在休眠\nZzz……")
+            return
+        
+        arg: str = "".join(args)
+        userid = str(user.id)
+
+        if arg.startswith("bind_"):
+            if userid in self.bind_players:
+                await update.message.reply_text(
+                    text="你已经绑定过，不要重复绑定"
+                )
+                return
+
+            rest: str = arg[len("bind_"):]
+
+            try:
+                from_userid, player_name = rest.split("_", 1)
+            except ValueError:
+                await update.message.reply_text(
+                    text="格式无效"
+                )
+                return
+
+            if userid != from_userid:
+                await update.message.reply_text("这不是你的验证链接")
+                return
+
+            code: str = f"{secrets.randbelow(1_000_000):06d}"
+            fut = Future()
+            expired_at = time.monotonic() + 60
+
+            try:
+                bind_verify_queue.put_nowait(
+                    BindVerify(
+                        userid,
+                        player_name,
+                        code,
+                        False,
+                        expired_at,
+                        fut
+                    )
+                )
+            except queue.Full:
+                await context.bot.send_message(
+                    chat_id=userid,
+                    text="当前有其它验证进行中，请稍后再试"
+                    )
+                return
+            fut.add_done_callback(partial(self.bind_callback, context.bot))
+            await context.bot.send_message(
+                chat_id=userid,
+                text=f"请进入服务器发送 `!!tgb bind {code}` 即可完成验证",
+                parse_mode=ParseMode.MARKDOWN_V2
+            )
     
     async def status_handler(self, update: Update, context: Context) -> None:
         if not self.is_allowed_chat(update):
             return
         if not update.message:
             return
-        ServerRunning: bool = self.mcserver.is_server_running()
-        ServerRconRunning: bool = self.mcserver.is_rcon_running()
-        ServerProgramPID: int | None = self.mcserver.get_server_pid()
+        server_running: bool = self.mcserver.is_server_running()
+        server_rcon_running: bool = self.mcserver.is_rcon_running()
+        server_program_pid: int | None = self.mcserver.get_server_pid()
     
     async def bind_handler(self, update: Update, context: Context) -> None:
         if not self.is_allowed_chat(update):
@@ -256,22 +367,22 @@ class TGBot_command(TGBot_init):
         
         userid = str(user.id)
         player_name: str = args[0]
-
-        async with self.files_lock:
-            self.bind_players[userid] = player_name
-            with self.bind_cache_path.open("w", encoding="utf-8") as f:
-                json.dump(
-                    self.bind_players,
-                    f,
-                    indent=2
-                )
-                f.flush()
-                os.fsync(f.fileno())
-
-            os.replace(self.bind_cache_path, self.bind_path)
         
+        if userid in self.bind_players:
+            await update.message.reply_text(
+                text="你已经绑定过，不要重复绑定"
+            )
+            return
+
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                f"验证你是 {player_name}",
+                url=f"https://t.me/{self.username}?start=bind_{userid}_{player_name}"
+            )]
+        ])
         await update.message.reply_text(
-            f"已绑定为 {player_name}"
+            text="点击下方按钮验证",
+            reply_markup=reply_markup
         )
 
     async def messages_handler(self, update: Update, context: Context) -> None:
@@ -287,8 +398,8 @@ class TGBot_command(TGBot_init):
             return
         player_name = self.bind_players.get(str(user.id))
         send_message_to_minecraft(
-            player_name=player_name,
             userid=user.id,
+            player_name=player_name,
             username=user.username,
             fullname=user.full_name,
             fromchat=chat.id,
@@ -313,10 +424,10 @@ class TGBot(TGBot_command):
             chat_ids=chat_ids,
             message_format=message_format
         )
-        self.loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
     def register_handlers(self) -> None:
         self.bot.add_error_handler(self.on_error)
+        self.bot.add_handler(CommandHandler("start", self.start_handler))
         self.bot.add_handler(CommandHandler("bind", self.bind_handler))
         self.bot.add_handler(
             MessageHandler(

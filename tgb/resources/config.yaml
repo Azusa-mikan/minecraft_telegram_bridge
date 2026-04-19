@@ -5,6 +5,12 @@ plugin_status: false
 to_tg_message_format: "<{player}> {text}"
 to_mc_message_format: "<{player}> {text}"
 
+joined_message: "{player} 加入了游戏"
+left_message: "{player} 退出了游戏"
+
+server_started_message: "服务器已启动"
+server_stopped_message: "服务器已停止: {code}"
+
 # Telegram 设置
 telegram:
   bot_token: ""
