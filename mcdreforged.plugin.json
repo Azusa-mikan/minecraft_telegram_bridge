@@ -1,7 +1,7 @@
 {
     "id": "tgb",
-    "version": "1.1.0",
-    "name": "Telegram Bridge",
+    "version": "1.2.0",
+    "name": "Minecraft Telegram Bridge",
     "description": {
         "zh_cn": "使用 Telegram Bot 控制你的 Minecraft 服务器，具备聊天同步/事件转发",
         "en_us": "Control your Minecraft server via Telegram Bot, with chat sync and event forwarding"
@@ -11,6 +11,7 @@
     "resources": ["lang"],
     "dependencies": {
         "mcdreforged": ">=2.15",
-        "mg_events": ">=1.1.2"
+        "mg_events": ">=1.1.2",
+        "minecraft_data_api": ">=1.6.1"
     }
 }

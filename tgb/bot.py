@@ -30,6 +30,8 @@ from tgb.util.dispatcher import (
     send_message_to_minecraft
 )
 
+import minecraft_data_api as api # type: ignore
+
 BotData = dict[Any, Any]
 ChatData = dict[Any, Any]
 UserData = dict[Any, Any]
@@ -81,6 +83,7 @@ class TGBot_init:
             ("restart", "重启服务器"),
             ("start_server", "启动服务器"),
             ("exec", "向服务器发送命令（带 !! 前缀则执行 MCDR 命令）"),
+            ("list", "获取服务器玩家列表")
         ])
 
     async def startup(self, app: App) -> None:
@@ -624,6 +627,28 @@ class TGBot_command(TGBot_init):
             text="命令已执行"
         )
 
+    async def list_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        player_list_raw: tuple[int, int, list[str]] | None = api.get_server_player_list()
+
+        if player_list_raw is None:
+            await update.message.reply_text(
+                f"查询玩家列表失败"
+            )
+            return
+        
+        player_count, player_count_max, player_list = player_list_raw
+        player_lists: str = "\n".join(player_list)
+        
+        await update.message.reply_text(
+            f"游玩人数(当前/最大): {player_count}/{player_count_max}\n"
+            f"玩家列表:\n{player_lists}"
+        )
+
+
     async def messages_handler(self, update: Update, context: Context) -> None:
         if (chat := update.effective_chat) is None:
             return
@@ -673,6 +698,7 @@ class TGBot(TGBot_command):
         self.bot.add_handler(CommandHandler("restart", self.restart_handler, filters.User(self.admin_id)))
         self.bot.add_handler(CommandHandler("start_server", self.start_server_handler, filters.User(self.admin_id)))
         self.bot.add_handler(CommandHandler("exec", self.exec_handler))
+        self.bot.add_handler(CommandHandler("list", self.list_handler))
         self.bot.add_handler(
             MessageHandler(
                 filters=~filters.COMMAND,

@@ -18,6 +18,7 @@
 - Python `>= 3.10`
 - MCDReforged `>= 2.15`
 - [mg_events](https://github.com/Mooling0602/MoreGameEvents-MCDR) `>=1.1.2`
+- [minecraft_data_api](https://github.com/Fallen-Breath/MinecraftDataAPI) `>=1.6.1`
 
 ## 安装
 
