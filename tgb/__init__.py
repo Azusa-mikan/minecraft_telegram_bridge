@@ -84,6 +84,20 @@ def message_send_text(server: PluginServerInterface) -> None:
             mc_messages_queue.task_done()
     server.logger.info(server.rtr("tgb.mc_queue_stop"))
 
+def start_mc_queue_worker(server: PluginServerInterface):
+    global mc_queue_thread
+    if mc_queue_thread is not None and mc_queue_thread.is_alive():
+        return
+    if bot_thread is not None and bot_thread.is_alive():
+        mc_queue_thread = threading.Thread(
+            target=message_send_text,
+            args=(server,),
+            name=mc_queue_thread_name
+        )
+        mc_queue_thread.start()
+    else:
+        server.logger.warning(server.rtr("tgb.bot_not_running"))
+
 def on_load(server: PluginServerInterface, prev) -> None:
     """
     插件加载
@@ -101,7 +115,7 @@ def on_load(server: PluginServerInterface, prev) -> None:
 
     if prev is not None:
         on_server_start_pre(server)
-        on_server_startup(server)
+        start_mc_queue_worker(server)
 
 def on_server_start_pre(server: PluginServerInterface) -> None:
     """
@@ -128,22 +142,11 @@ def on_server_startup(server: PluginServerInterface) -> None:
     服务器已启动
     """
     config = get_config(server)
-    global mc_queue_thread
-    if mc_queue_thread is not None and mc_queue_thread.is_alive():
-        return
-    if bot_thread is not None and bot_thread.is_alive():
-        mc_queue_thread = threading.Thread(
-            target=message_send_text,
-            args=(server,),
-            name=mc_queue_thread_name
-        )
-        mc_queue_thread.start()
-        send_message_to_telegram(
-            player=None,
-            text=config.server_started_message
-        )
-    else:
-        server.logger.warning(server.rtr("tgb.bot_not_running"))
+    start_mc_queue_worker(server)
+    send_message_to_telegram(
+        player=None,
+        text=config.server_started_message
+    )
 
 def on_user_info(server: PluginServerInterface, info: Info) -> None:
     """
