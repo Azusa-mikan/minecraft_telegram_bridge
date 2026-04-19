@@ -290,6 +290,27 @@ class TGBot_command(TGBot_init):
         userid = str(user.id)
 
         if arg.startswith("bind_"):
+            got = False
+            try:
+                verify = bind_verify_queue.get_nowait()
+                got = True
+                if time.monotonic() >= verify.expired_at:
+                    if not verify.fut.done():
+                        verify.fut.set_result(
+                            BindVerified(
+                                user_id=verify.user_id,
+                                player_name=verify.player_name,
+                                verified=False
+                            )
+                        )
+                else:
+                    bind_verify_queue.put_nowait(verify)
+            except queue.Empty:
+                pass
+            finally:
+                if got:
+                    bind_verify_queue.task_done()
+
             if userid in self.bind_players:
                 await update.message.reply_text(
                     text="你已经绑定过，不要重复绑定"
