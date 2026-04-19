@@ -17,12 +17,18 @@ mc_queue_thread: threading.Thread | None = None
 mc_queue_thread_name = "tgb_minecraft_queue"
 
 def get_config(server: PluginServerInterface) -> Config:
+    """
+    获取配置
+    """
     if config is None:
         on_unload(server)
         raise ValueError("Config not loaded correctly")
     return config
 
 def stop_mc_queue_thread() -> None:
+    """
+    停止 Telegram 消息消费队列
+    """
     if mc_queue_thread is not None and mc_queue_thread.is_alive():
         mc_messages_queue.put_nowait(StopSignal())
         mc_queue_thread.join(timeout=10)
@@ -84,7 +90,10 @@ def message_send_text(server: PluginServerInterface) -> None:
             mc_messages_queue.task_done()
     server.logger.info(server.rtr("tgb.mc_queue_stop"))
 
-def start_mc_queue_worker(server: PluginServerInterface):
+def start_mc_queue_worker(server: PluginServerInterface) -> None:
+    """
+    启动 Telegram 消息消费队列
+    """
     global mc_queue_thread
     if mc_queue_thread is not None and mc_queue_thread.is_alive():
         return
@@ -113,15 +122,6 @@ def on_load(server: PluginServerInterface, prev) -> None:
         server.logger.error(server.rtr("tgb.threading_running"))
         return
 
-    if prev is not None:
-        on_server_start_pre(server)
-        start_mc_queue_worker(server)
-
-def on_server_start_pre(server: PluginServerInterface) -> None:
-    """
-    服务器准备启动
-    """
-    config = get_config(server)
     global bot, bot_thread
     bot = TGBot(
         serverinterface=server,
@@ -136,6 +136,9 @@ def on_server_start_pre(server: PluginServerInterface) -> None:
         name=bot_thread_name
     )
     bot_thread.start()
+
+    if prev is not None:
+        start_mc_queue_worker(server)
 
 def on_server_startup(server: PluginServerInterface) -> None:
     """
@@ -170,6 +173,9 @@ def on_player_joined(
         player: str,
         info: Info
     ) -> None:
+    """
+    玩家加入
+    """
     config = get_config(server)
     if bot_thread is not None and bot_thread.is_alive():
         send_message_to_telegram(
@@ -186,6 +192,9 @@ def on_player_left(
         server: PluginServerInterface,
         player: str,
     ) -> None:
+    """
+    玩家离开
+    """
     config = get_config(server)
     if bot_thread is not None and bot_thread.is_alive():
         send_message_to_telegram(
@@ -202,6 +211,9 @@ def on_server_stop(
         server: PluginServerInterface,
         server_return_code: int
     ) -> None:
+    """
+    服务器停止
+    """
     config = get_config(server)
     send_message_to_telegram(
         player=None,
@@ -210,11 +222,25 @@ def on_server_stop(
         )
     )
 
+    global mc_queue_thread
+    if mc_queue_thread is not None:
+        mc_messages_queue.put_nowait(StopSignal())
+        mc_queue_thread.join(timeout=10)
+        if mc_queue_thread.is_alive():
+            server.logger.warning(
+                server.rtr(
+                    "tgb.still_running",
+                    threadname=mc_queue_thread_name
+                )
+            )
+
+    mc_queue_thread = None
+
 def on_unload(server: PluginServerInterface) -> None:
     """
     插件卸载
     """
-    global bot, bot_thread, mc_queue_thread
+    global bot, bot_thread
     if bot is not None:
         bot.stop()
 
@@ -231,16 +257,4 @@ def on_unload(server: PluginServerInterface) -> None:
     bot = None
     bot_thread = None
 
-    if mc_queue_thread is not None:
-        mc_messages_queue.put_nowait(StopSignal())
-        mc_queue_thread.join(timeout=10)
-        if mc_queue_thread.is_alive():
-            server.logger.warning(
-                server.rtr(
-                    "tgb.still_running",
-                    threadname=mc_queue_thread_name
-                )
-            )
-
-    mc_queue_thread = None
     server.logger.info(server.rtr("tgb.unload"))

@@ -1,6 +1,6 @@
 from typing import Literal, override
 
-from mcdreforged import CommandSource, ServerInterface
+from mcdreforged import CommandSource, PluginServerInterface
 from mcdreforged.utils.types.message import MessageText
 
 from telegram import Message
@@ -16,12 +16,13 @@ BoolStr: dict[bool, Literal["Yes", "No"]] = {
 class TelegramCommandSource(CommandSource):
     def __init__(
             self,
-            mcdr_server: ServerInterface,
+            *,
+            mcdr_server: PluginServerInterface,
             messsage_context: Message,
             admin_id: int
         ) -> None:
         super().__init__()
-        self.mcdr_server: ServerInterface = mcdr_server
+        self.mcdr_server: PluginServerInterface = mcdr_server
         self.message_context: Message = messsage_context
         self.admin_id: int = admin_id
     
@@ -42,7 +43,7 @@ class TelegramCommandSource(CommandSource):
         return False
 
     @override
-    def get_server(self) -> ServerInterface:
+    def get_server(self) -> PluginServerInterface:
         return self.mcdr_server
 
     @override

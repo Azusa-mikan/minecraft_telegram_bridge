@@ -15,10 +15,11 @@ from telegram import User, Update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackContext, ExtBot, JobQueue
 from telegram.ext import CommandHandler, MessageHandler, AIORateLimiter, filters
+from telegram.ext import CallbackQueryHandler
 from telegram.constants import BOT_API_VERSION, ParseMode
 from telegram.error import TelegramError
 
-from tgb.util import BoolStr
+from tgb.util import BoolStr, TelegramCommandSource
 from tgb.util.dispatcher import (
     StopSignal,
     BindVerified,
@@ -71,15 +72,15 @@ class TGBot_init:
         self._mc_cpu_last_wall: float | None = None
         self._mc_cpu_last_total: float | None = None
     
-    async def set_command(self, app: App) -> None:
-        await app.bot.set_my_commands([
+    async def set_command(self, app: App) -> bool:
+        return await app.bot.set_my_commands([
             ("start", "激活机器人"),
             ("status", "查看服务器状态"),
             ("bind", "绑定玩家"),
             ("stop", "停止服务器"),
             ("restart", "重启服务器"),
-            ("exec", "向服务器发送命令"),
-            ("exec_mcdr", "发送MCDR命令")
+            ("start_server", "启动服务器"),
+            ("exec", "向服务器发送命令（带 !! 前缀则执行 MCDR 命令）"),
         ])
 
     async def startup(self, app: App) -> None:
@@ -217,6 +218,13 @@ class TGBot_init:
             return False
         return True
 
+    @staticmethod
+    def inlinekeyboard(action: str, text: str) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton(text, callback_data=f"action:{action}")],
+            [InlineKeyboardButton("取消", callback_data="action:cancel")],
+        ])
+
     def _sample_mc_cpu_percent(self, pid: int) -> float | None:
         try:
             mc_pid = psutil.Process(pid)
@@ -287,6 +295,55 @@ class TGBot_init:
             self._bind_callback_async(bot, fut),
             self.loop
         )
+
+    async def inlinekeyboard_callback(self, update: Update, context: Context):
+        if (query := update.callback_query) is None:
+            return
+        if (chat := update.effective_chat) is None:
+            return
+        if query.from_user.id != self.admin_id:
+            await query.answer("你没有权限进行此操作", show_alert=True)
+            return
+        if chat.id not in self.chat_ids_set:
+            return
+
+        operation: str = query.data or ""
+
+        match operation:
+            case "action:cancel":
+                await query.answer()
+                await query.edit_message_text(
+                    text="已取消操作",
+                    reply_markup=None
+                )
+                return
+            case "action:stop_server":
+                await query.answer()
+                self.mcserver.stop()
+                await query.edit_message_text(
+                    text="服务器正在关闭",
+                    reply_markup=None
+                )
+                return
+            case "action:restart_server":
+                await query.answer()
+                self.mcserver.restart()
+                await query.edit_message_text(
+                    text="服务器正在重启",
+                    reply_markup=None
+                )
+                return
+            case "action:start_server":
+                await query.answer()
+                self.mcserver.start()
+                await query.edit_message_text(
+                    text="服务器正在启动",
+                    reply_markup=None
+                )
+                return
+            case _:
+                await query.answer("未知操作", show_alert=True)
+                return
 
     def _init_bot(self) -> App:
         app = Application.builder()
@@ -403,6 +460,7 @@ class TGBot_command(TGBot_init):
         server_program_pid: int | None = self.mcserver.get_server_pid()
 
         if server_program_pid is not None:
+            server_status = self.mcserver.get_server_information()
             server_running: bool = self.mcserver.is_server_running()
             server_rcon_running: bool = self.mcserver.is_rcon_running()
             tg_queue_count: int = tg_messages_queue.qsize()
@@ -420,6 +478,7 @@ class TGBot_command(TGBot_init):
             await update.message.reply_text(
                 (
                     f"服务器状态:\n"
+                    f"服务端版本: {server_status.version}\n"
                     f"运行状态: {BoolStr[server_running]}\n"
                     f"服务端CPU占用: {mc_usage_cpu_text}\n"
                     f"服务端内存占用: {mc_usege_mem_mb:.2f} MB\n"
@@ -445,12 +504,12 @@ class TGBot_command(TGBot_init):
             return
         if not (args := context.args):
             await update.message.reply_text(
-                "Usage: /bind [Player Name]"
+                "用法: /bind [玩家名]"
             )
             return
         if len(args) > 1:
             await update.message.reply_text(
-                "Player name has no spaces"
+                "玩家名不应该有空格"
             )
             return
         
@@ -472,6 +531,97 @@ class TGBot_command(TGBot_init):
         await update.message.reply_text(
             text="点击下方按钮验证",
             reply_markup=reply_markup
+        )
+
+    async def stop_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        await update.message.reply_text(
+            text="确定要停止服务器？",
+            reply_markup=self.inlinekeyboard("stop_server", "确认")
+        )
+
+    async def restart_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        await update.message.reply_text(
+            text="确定要重启服务器？",
+            reply_markup=self.inlinekeyboard("restart_server", "确认")
+        )
+    
+    async def start_server_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        if self.mcserver.is_server_running():
+            await update.message.reply_text(
+                    text="服务器已经在运行了"
+                )
+            return
+        await update.message.reply_text(
+            text="确定要启动服务器？",
+            reply_markup=self.inlinekeyboard("start_server", "确认")
+        )
+
+    async def exec_handler(self, update: Update, context: Context) -> None:
+        if not self.is_allowed_chat(update):
+            return
+        if not update.message:
+            return
+        if not self.mcserver.is_server_running():
+            await update.message.reply_text(
+                    text="服务器未在运行"
+                )
+            return
+        if (user := update.effective_user) is None:
+            return
+        if not (args := context.args):
+            await update.message.reply_text(
+                    text=(
+                        "用法: /exec [Minecraft 命令]\n"
+                        "或以 !! 为前缀来执行 MCDR 命令"
+                    )
+                )
+            return
+        
+        command: str = " ".join(args)
+
+        if command.startswith("!!"):
+            mcdr_command: str = command[2:]
+            self.mcserver.execute_command(
+                command=mcdr_command,
+                source=TelegramCommandSource(
+                    mcdr_server=self.mcserver,
+                    messsage_context=update.message,
+                    admin_id=self.admin_id
+                )
+            )
+            await update.message.reply_text(
+                text="命令已执行"
+            )
+            return
+        
+        if user.id != self.admin_id:
+            await update.message.reply_text(
+                text="你没有执行此命令的权限"
+            )
+            return
+        
+        if self.mcserver.is_rcon_running():
+            result = self.mcserver.rcon_query(command)
+            await update.message.reply_text(
+                text=f"命令执行结果:\n{result}"
+            )
+            return
+
+        self.mcserver.execute(command)
+        await update.message.reply_text(
+            text="命令已执行"
         )
 
     async def messages_handler(self, update: Update, context: Context) -> None:
@@ -519,12 +669,17 @@ class TGBot(TGBot_command):
         self.bot.add_handler(CommandHandler("start", self.start_handler))
         self.bot.add_handler(CommandHandler("status", self.status_handler))
         self.bot.add_handler(CommandHandler("bind", self.bind_handler))
+        self.bot.add_handler(CommandHandler("stop", self.stop_handler, filters.User(self.admin_id)))
+        self.bot.add_handler(CommandHandler("restart", self.restart_handler, filters.User(self.admin_id)))
+        self.bot.add_handler(CommandHandler("start_server", self.start_server_handler, filters.User(self.admin_id)))
+        self.bot.add_handler(CommandHandler("exec", self.exec_handler))
         self.bot.add_handler(
             MessageHandler(
                 filters=~filters.COMMAND,
                 callback=self.messages_handler
             )
         )
+        self.bot.add_handler(CallbackQueryHandler(self.inlinekeyboard_callback))
 
     def run(self) -> None:
         self.status = "starting"
