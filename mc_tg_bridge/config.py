@@ -10,7 +10,7 @@ yaml = YAML(typ="rt")
 yaml.indent(mapping=2, sequence=4, offset=2)
 yaml.preserve_quotes = True
 
-config_raw = pkgutil.get_data("tgb", "resources/config.yaml")
+config_raw = pkgutil.get_data("mc_tg_bridge", "resources/config.yaml")
 
 class ResourceBundleError(Exception):
     def __init__(self, file_path: Path | str | None = None) -> None:

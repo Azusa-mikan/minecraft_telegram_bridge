@@ -1,5 +1,5 @@
 {
-    "id": "tgb",
+    "id": "mc_tg_bridge",
     "version": "1.2.0",
     "name": "Minecraft Telegram Bridge",
     "description": {
@@ -7,7 +7,7 @@
         "en_us": "Control your Minecraft server via Telegram Bot, with chat sync and event forwarding"
     },
     "author": "Azusa-mikan",
-    "link": "https://github.com/Azusa-mikan/telegram_bridge",
+    "link": "https://github.com/Azusa-mikan/minecraft_telegram_bridge",
     "resources": ["lang"],
     "dependencies": {
         "mcdreforged": ">=2.15",

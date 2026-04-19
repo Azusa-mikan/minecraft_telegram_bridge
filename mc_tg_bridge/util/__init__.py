@@ -6,7 +6,7 @@ from mcdreforged.utils.types.message import MessageText
 from telegram import Message
 from telegram.ext import filters
 
-from tgb.util.dispatcher import tg_messages_queue, MCTOTGMessages
+from mc_tg_bridge.util.dispatcher import tg_messages_queue, MCTOTGMessages
 
 BoolStr: dict[bool, Literal["Yes", "No"]] = {
     True: "Yes",

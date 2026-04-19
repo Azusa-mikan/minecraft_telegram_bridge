@@ -2,10 +2,10 @@ import threading
 
 from mcdreforged import PluginServerInterface, Info, RText, RAction
 
-from tgb.config import load_config, Config
-from tgb.bot import TGBot
-from tgb.util.dispatcher import StopSignal, mc_messages_queue, send_message_to_telegram
-from tgb.command import register_commands
+from mc_tg_bridge.config import load_config, Config
+from mc_tg_bridge.bot import TGBot
+from mc_tg_bridge.util.dispatcher import StopSignal, mc_messages_queue, send_message_to_telegram
+from mc_tg_bridge.command import register_commands
 
 config: Config | None = None
 

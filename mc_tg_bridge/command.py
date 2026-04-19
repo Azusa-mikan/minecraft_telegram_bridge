@@ -18,7 +18,7 @@ from mcdreforged.api.command import (
     CommandContext
 )
 
-from tgb.util.dispatcher import (
+from mc_tg_bridge.util.dispatcher import (
     MCTOTGMessages,
     BindVerified,
     tg_messages_queue,

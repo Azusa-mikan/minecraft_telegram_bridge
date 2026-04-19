@@ -19,8 +19,8 @@ from telegram.ext import CallbackQueryHandler
 from telegram.constants import BOT_API_VERSION, ParseMode
 from telegram.error import TelegramError
 
-from tgb.util import BoolStr, TelegramCommandSource
-from tgb.util.dispatcher import (
+from mc_tg_bridge.util import BoolStr, TelegramCommandSource
+from mc_tg_bridge.util.dispatcher import (
     StopSignal,
     BindVerified,
     BindVerify,
