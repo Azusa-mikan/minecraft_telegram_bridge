@@ -8,9 +8,10 @@ from concurrent.futures import Future
 import time
 import secrets
 import queue
+import psutil
 
 from mcdreforged import PluginServerInterface
-from telegram import User, Update, Message
+from telegram import User, Update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackContext, ExtBot, JobQueue
 from telegram.ext import CommandHandler, MessageHandler, AIORateLimiter, filters
@@ -23,6 +24,7 @@ from tgb.util.dispatcher import (
     BindVerified,
     BindVerify,
     tg_messages_queue,
+    mc_messages_queue,
     bind_verify_queue,
     send_message_to_minecraft
 )
@@ -65,12 +67,15 @@ class TGBot_init:
         
         self.files_lock = asyncio.Lock()
         self.loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        self._mc_cpu_last_pid: int | None = None
+        self._mc_cpu_last_wall: float | None = None
+        self._mc_cpu_last_total: float | None = None
     
     async def set_command(self, app: App) -> None:
         await app.bot.set_my_commands([
             ("start", "激活机器人"),
-            ("bind", "绑定到玩家"),
             ("status", "查看服务器状态"),
+            ("bind", "绑定玩家"),
             ("stop", "停止服务器"),
             ("restart", "重启服务器"),
             ("exec", "向服务器发送命令"),
@@ -211,6 +216,37 @@ class TGBot_init:
         if update.effective_chat.id not in self.chat_ids_set:
             return False
         return True
+
+    def _sample_mc_cpu_percent(self, pid: int) -> float | None:
+        try:
+            mc_pid = psutil.Process(pid)
+            cpu_times = mc_pid.cpu_times()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+
+        total = cpu_times.user + cpu_times.system
+        now = time.monotonic()
+
+        if (
+            self._mc_cpu_last_pid != pid
+            or self._mc_cpu_last_wall is None
+            or self._mc_cpu_last_total is None
+        ):
+            self._mc_cpu_last_pid = pid
+            self._mc_cpu_last_wall = now
+            self._mc_cpu_last_total = total
+            return None
+
+        dt_wall = now - self._mc_cpu_last_wall
+        dt_total = total - self._mc_cpu_last_total
+
+        self._mc_cpu_last_wall = now
+        self._mc_cpu_last_total = total
+
+        if dt_wall <= 0:
+            return 0.0
+
+        return max(0.0, (dt_total / dt_wall) * 100.0)
 
     async def _bind_callback_async(
             self,
@@ -364,9 +400,41 @@ class TGBot_command(TGBot_init):
             return
         if not update.message:
             return
-        server_running: bool = self.mcserver.is_server_running()
-        server_rcon_running: bool = self.mcserver.is_rcon_running()
         server_program_pid: int | None = self.mcserver.get_server_pid()
+
+        if server_program_pid is not None:
+            server_running: bool = self.mcserver.is_server_running()
+            server_rcon_running: bool = self.mcserver.is_rcon_running()
+            tg_queue_count: int = tg_messages_queue.qsize()
+            mc_queue_count: int = mc_messages_queue.qsize()
+            bind_queue_count = bind_verify_queue.qsize()
+            mc_pid = psutil.Process(server_program_pid)
+            mc_usage_cpu = self._sample_mc_cpu_percent(server_program_pid)
+            mc_usage_cpu_text = "采样中..." if mc_usage_cpu is None else f"{mc_usage_cpu:.2f}%"
+            mc_usege_mem_mb: float = mc_pid.memory_info().rss / 1024 / 1024
+            mc_threads: int = mc_pid.num_threads()
+            mc_io = mc_pid.io_counters()
+            mc_read_mb: float = mc_io.read_bytes / 1024 / 1024
+            mc_write_mb: float = mc_io.write_bytes / 1024 / 1024
+
+            await update.message.reply_text(
+                (
+                    f"服务器状态:\n"
+                    f"运行状态: {BoolStr[server_running]}\n"
+                    f"服务端CPU占用: {mc_usage_cpu_text}\n"
+                    f"服务端内存占用: {mc_usege_mem_mb:.2f} MB\n"
+                    f"服务端线程占用: {mc_threads}\n"
+                    f"IO累计读写(MB): {mc_read_mb:.1f}/{mc_write_mb:.1f}\n\n"
+                    f"RCON状态: {BoolStr[server_rcon_running]}\n"
+                    f"服务器进程PID: {server_program_pid}\n"
+                    f"未处理队列数量(TG/MC): {tg_queue_count}/{mc_queue_count}\n"
+                    f"验证绑定处理队列: {bind_queue_count}/{bind_verify_queue.maxsize}"
+                )
+            )
+        else:
+            await update.message.reply_text(
+                "服务器未运行"
+            )
     
     async def bind_handler(self, update: Update, context: Context) -> None:
         if not self.is_allowed_chat(update):
@@ -449,6 +517,7 @@ class TGBot(TGBot_command):
     def register_handlers(self) -> None:
         self.bot.add_error_handler(self.on_error)
         self.bot.add_handler(CommandHandler("start", self.start_handler))
+        self.bot.add_handler(CommandHandler("status", self.status_handler))
         self.bot.add_handler(CommandHandler("bind", self.bind_handler))
         self.bot.add_handler(
             MessageHandler(
