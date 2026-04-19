@@ -115,4 +115,8 @@ pip install "pydantic>=2.12.5" "python-telegram-bot[rate-limiter]>=22.7"
   - 确认验证码未过期
   - 确认执行绑定命令的游戏玩家与发起绑定的 Telegram 用户一致
 
+## 许可证
+
+本项目使用 **GNU General Public License v3.0 (GPL-3.0)** 许可证发布。  
+
 Copyright (C) 2026 Azusa-Mikan
