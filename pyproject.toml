@@ -1,5 +1,5 @@
 [project]
-name = "telegram-bridge"
+name = "minecraft_telegram_bridge"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
