@@ -22,16 +22,13 @@
 
 ## 安装
 
-1. 从 Releases 下载插件文件
-2. 将下载好的插件文件放入你的 MCDR 插件目录（一般为 plugin 文件夹）
-3. 安装依赖：
+直接使用下面的命令，它会搞定一切：
 
-```bash
-pip install "pydantic>=2.12.5" "python-telegram-bot[rate-limiter]>=22.7"
+```
+!!MCDR plugin install mc_tg_bridge
 ```
 
-4. 启动 MCDR 一次，插件会自动生成配置文件：
-   - `config/tgb/config.yaml`（具体路径取决于 MCDR 数据目录）
+安装后插件会自动生成配置文件 `config/tgb/config.yaml`（具体路径取决于 MCDR 数据目录）
 
 ## 配置文件
 
